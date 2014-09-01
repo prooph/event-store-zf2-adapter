@@ -1,0 +1,34 @@
+{
+    "name": "prooph/event-store-zf2-adapter",
+    "description": "ZF2 DB Adapter for ProophEventStore",
+    "homepage": "https://github.com/prooph/event-store-zf2-adapter",
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Alexander Miertsch",
+            "email": "contact@prooph.de",
+            "homepage": "http://www.codeliner.ws"
+        }
+    ],
+    "require": {
+        "php": ">=5.4",
+        "zendframework/zend-db" : "~2.3",
+        "zendframework/zend-serializer" : "~2.3",
+        "beberlei/assert": "~2.0"
+    },
+    "require-dev": {
+        "prooph/event-store": "dev-0.5-dev",
+        "phpunit/phpunit": "3.7.*",
+        "satooshi/php-coveralls": "dev-master"
+    },
+    "autoload": {
+        "psr-4": {
+            "Prooph\\EventStore\\Adapter\\Zf2\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-0": {
+            "Prooph\\EventStoreTest\\": "vendor/prooph/event-store/tests/"
+        }
+    }
+}

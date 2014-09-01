@@ -1,0 +1,21 @@
+language: php
+
+php:
+  - 5.4
+  - 5.5
+  - 5.6
+
+env:
+  - ZF2_VERSION=2.3.*
+
+before_script:
+  - composer self-update
+  - composer require zendframework/zend-db:${ZF2_VERSION} --dev --prefer-source
+  - composer require zendframework/zend-serializer:${ZF2_VERSION} --dev --prefer-source
+  - composer install --dev --prefer-source
+
+script: phpunit --coverage-text --coverage-clover ./build/logs/clover.zf2-$ZF2_VERSION.xml
+
+after_script:
+  - php vendor/bin/coveralls -v
+
