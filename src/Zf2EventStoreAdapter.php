@@ -72,12 +72,8 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
             throw new ConfigurationException('DB adapter configuration is missing');
         }
 
-        if (isset($configuration['source_table_map'])) {
-            $this->streamTableMap = $configuration['source_table_map'];
-        }
-
-        if (isset($configuration['snapshot_table'])) {
-            $this->snapshotTable = $configuration['snapshot_table'];
+        if (isset($configuration['stream_table_map'])) {
+            $this->streamTableMap = $configuration['stream_table_map'];
         }
 
         $this->dbAdapter = (isset($configuration['zend_db_adapter']))?
