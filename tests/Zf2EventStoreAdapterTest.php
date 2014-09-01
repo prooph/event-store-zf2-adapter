@@ -50,7 +50,11 @@ class Zf2EventStoreAdapterTest extends TestCase
     {
         $testStream = $this->getTestStream();
 
+        $this->adapter->beginTransaction();
+
         $this->adapter->create($testStream);
+
+        $this->adapter->commit();
 
         $streamEvents = $this->adapter->loadEventsByMetadataFrom(new StreamName('Prooph\Model\User'), array('tag' => 'person'));
 
