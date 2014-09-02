@@ -112,11 +112,12 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
 
     /**
      * @param StreamName $aStreamName
+     * @param null|int $minVersion
      * @return Stream|null
      */
-    public function load(StreamName $aStreamName)
+    public function load(StreamName $aStreamName, $minVersion = null)
     {
-        $events = $this->loadEventsByMetadataFrom($aStreamName, array());
+        $events = $this->loadEventsByMetadataFrom($aStreamName, array(), $minVersion);
 
         return new Stream($aStreamName, $events);
     }
@@ -124,24 +125,31 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     /**
      * @param StreamName $aStreamName
      * @param array $metadata
-     * @throws \Prooph\EventStore\Exception\StreamNotFoundException
+     * @param null|int $minVersion
      * @return StreamEvent[]
      */
-    public function loadEventsByMetadataFrom(StreamName $aStreamName, array $metadata)
+    public function loadEventsByMetadataFrom(StreamName $aStreamName, array $metadata, $minVersion = null)
     {
         $tableGateway = $this->getTablegateway($aStreamName);
 
         $sql = $tableGateway->getSql();
 
+        $select = $sql->select()->order('version');
+
         $where = new \Zend\Db\Sql\Where();
 
-        $where->equalTo('streamName', $aStreamName->toString());
-
-        foreach ($metadata as $key => $value) {
-            $where->AND->equalTo($key, (string)$value);
+        if (!is_null($minVersion)) {
+            $where->AND->greaterThanOrEqualTo('version', $minVersion);
         }
 
-        $select = $sql->select()->where($where)->order('version');
+        if (! empty($metadata)) {
+
+            foreach ($metadata as $key => $value) {
+                $where->AND->equalTo($key, (string)$value);
+            }
+        }
+
+        $select->where($where);
 
         $eventsData = $tableGateway->selectWith($select);
 
@@ -199,7 +207,6 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
         $createTable = new CreateTable($this->getTable($aStream->streamName()));
 
         $createTable->addColumn(new Varchar('eventId', 200))
-            ->addColumn(new Varchar('streamName', 200))
             ->addColumn(new Integer('version'))
             ->addColumn(new Text('eventName'))
             ->addColumn(new Text('payload'))
@@ -227,7 +234,6 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     {
         $eventData = array(
             'eventId' => $e->eventId()->toString(),
-            'streamName' => $streamName->toString(),
             'version' => $e->version(),
             'eventName' => $e->eventName()->toString(),
             'payload' => Serializer::serialize($e->payload(), $this->serializerAdapter),
