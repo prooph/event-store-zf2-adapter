@@ -215,17 +215,11 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
             ->addColumn(new Text('payload'))
             ->addColumn(new Text('occurredOn'));
 
-        $uniqueIndexColumns = array();
-
         foreach ($metadata as $key => $value) {
             $createTable->addColumn(new Varchar($key, 100));
-            $uniqueIndexColumns[] = $key;
         }
 
-        $uniqueIndexColumns[] = "version";
-
         $createTable->addConstraint(new PrimaryKey('eventId'));
-        $createTable->addConstraint(new UniqueKey($uniqueIndexColumns, 'metadata_version_uix'));
 
         if ($returnSql) {
             return $createTable->getSqlString($this->dbAdapter->getPlatform());
