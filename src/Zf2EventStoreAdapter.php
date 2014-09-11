@@ -24,7 +24,9 @@ use Zend\Db\Sql\Ddl\Column\Integer;
 use Zend\Db\Sql\Ddl\Column\Text;
 use Zend\Db\Sql\Ddl\Column\Varchar;
 use Zend\Db\Sql\Ddl\Constraint\PrimaryKey;
+use Zend\Db\Sql\Ddl\Constraint\UniqueKey;
 use Zend\Db\Sql\Ddl\CreateTable;
+use Zend\Db\Sql\Ddl\DropTable;
 use Zend\Db\TableGateway\TableGateway;
 use Zend\Db\Adapter\Platform;
 use Zend\Serializer\Serializer;
@@ -92,7 +94,19 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
      */
     public function create(Stream $aStream)
     {
-        $this->createSchemaFor($aStream);
+        if (count($aStream->streamEvents()) === 0) {
+            throw new RuntimeException(
+                sprintf(
+                    "Cannot create empty stream %s. %s requires at least one event to extract metadata information",
+                    $aStream->streamName()->toString(),
+                    __CLASS__
+                )
+            );
+        }
+
+        $firstEvent = $aStream->streamEvents()[0];
+
+        $this->createSchemaFor($aStream->streamName(), $firstEvent->metadata());
 
         $this->appendTo($aStream->streamName(), $aStream->streamEvents());
     }
@@ -186,25 +200,14 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     }
 
     /**
-     * @param Stream $aStream
-     * @throws \Prooph\EventStore\Exception\RuntimeException
-     * @return bool
+     * @param StreamName $aStreamName
+     * @param array $metadata
+     * @param bool $returnSql
+     * @return string|null Whether $returnSql is true or not function will return generated sql or execute it directly
      */
-    protected function createSchemaFor(Stream $aStream)
+    public function createSchemaFor(StreamName $aStreamName, array $metadata = array(), $returnSql = false)
     {
-        if (count($aStream->streamEvents()) === 0) {
-            throw new RuntimeException(
-                sprintf(
-                    "Cannot create empty stream %s. %s requires at least one event to extract metadata information",
-                    $aStream->streamName()->toString(),
-                    __CLASS__
-                )
-            );
-        }
-
-        $firstEvent = $aStream->streamEvents()[0];
-
-        $createTable = new CreateTable($this->getTable($aStream->streamName()));
+        $createTable = new CreateTable($this->getTable($aStreamName));
 
         $createTable->addColumn(new Varchar('eventId', 200))
             ->addColumn(new Integer('version'))
@@ -212,15 +215,47 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
             ->addColumn(new Text('payload'))
             ->addColumn(new Text('occurredOn'));
 
-        foreach ($firstEvent->metadata() as $key => $value) {
-            $createTable->addColumn(new Text($key));
+        $uniqueIndexColumns = array();
+
+        foreach ($metadata as $key => $value) {
+            $createTable->addColumn(new Varchar($key, 100));
+            $uniqueIndexColumns[] = $key;
         }
 
+        $uniqueIndexColumns[] = "version";
+
         $createTable->addConstraint(new PrimaryKey('eventId'));
+        $createTable->addConstraint(new UniqueKey($uniqueIndexColumns, 'metadata_version_uix'));
+
+        if ($returnSql) {
+            return $createTable->getSqlString($this->dbAdapter->getPlatform());
+        }
 
         $this->dbAdapter->getDriver()
             ->getConnection()
             ->execute($createTable->getSqlString($this->dbAdapter->getPlatform()));
+    }
+
+    /**
+     * Drops a stream table
+     *
+     * Use this function with caution. All your events will be lost! But it can be useful in migration scenarios.
+     *
+     * @param StreamName $aStreamName
+     * @param bool $returnSql
+     * @return string|null Whether $returnSql is true or not function will return generated sql or execute it directly
+     */
+    public function dropSchemaFor(StreamName $aStreamName, $returnSql = false)
+    {
+        $dropTable = new DropTable($this->getTable($aStreamName));
+
+        if ($returnSql) {
+            return $dropTable->getSqlString($this->dbAdapter->getPlatform());
+        }
+
+        $this->dbAdapter->getDriver()
+            ->getConnection()
+            ->execute($dropTable->getSqlString($this->dbAdapter->getPlatform()));
     }
 
     /**
