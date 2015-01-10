@@ -178,6 +178,13 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
 
             $occurredOn = new \DateTime($eventData->occurredOn);
 
+            //Add metadata stored in table
+            foreach ($eventData as $key => $value) {
+                if (! in_array($key, ['eventId', 'eventName', 'occurredOn', 'payload', 'version'])) {
+                    $metadata[$key] = $value;
+                }
+            }
+
             $events[] = new StreamEvent($eventId, $eventName, $payload, (int)$eventData->version, $occurredOn, $metadata);
         }
 
