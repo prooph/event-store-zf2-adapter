@@ -328,6 +328,7 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
      */
     protected function getShortStreamName(StreamName $streamName)
     {
-        return join('', array_slice(explode('\\', $streamName->toString()), -1));
+        $streamName = str_replace('-', '_', $streamName->toString());
+        return join('', array_slice(explode('\\', $streamName), -1));
     }
 }
