@@ -65,6 +65,11 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     protected $serializerAdapter;
 
     /**
+     * @var array
+     */
+    protected $standardColumns = ['eventId', 'eventName', 'occurredOn', 'payload', 'version'];
+
+    /**
      * @param array $configuration
      * @throws \Prooph\EventStore\Adapter\Exception\ConfigurationException
      */
@@ -180,7 +185,7 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
 
             //Add metadata stored in table
             foreach ($eventData as $key => $value) {
-                if (! in_array($key, ['eventId', 'eventName', 'occurredOn', 'payload', 'version'])) {
+                if (! in_array($key, $this->standardColumns)) {
                     $metadata[$key] = $value;
                 }
             }
