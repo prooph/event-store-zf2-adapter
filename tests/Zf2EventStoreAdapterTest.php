@@ -13,11 +13,11 @@ namespace Prooph\EventStoreTest\Adapter\Zf2;
 
 use Prooph\EventStore\Adapter\Zf2\Zf2EventStoreAdapter;
 
-use Prooph\EventStore\Stream\EventId;
-use Prooph\EventStore\Stream\EventName;
+use Prooph\EventStore\Stream\DomainEventMetadataWriter;
 use Prooph\EventStore\Stream\Stream;
-use Prooph\EventStore\Stream\StreamEvent;
 use Prooph\EventStore\Stream\StreamName;
+use Prooph\EventStoreTest\Mock\UserCreated;
+use Prooph\EventStoreTest\Mock\UsernameChanged;
 use Prooph\EventStoreTest\TestCase;
 
 /**
@@ -60,9 +60,9 @@ class Zf2EventStoreAdapterTest extends TestCase
 
         $this->assertEquals(1, count($streamEvents));
 
-        $this->assertEquals($testStream->streamEvents()[0]->eventId()->toString(), $streamEvents[0]->eventId()->toString());
-        $this->assertEquals($testStream->streamEvents()[0]->occurredOn()->format('Y-m-d\TH:i:s.uO'), $streamEvents[0]->occurredOn()->format('Y-m-d\TH:i:s.uO'));
-        $this->assertEquals('UserCreated', $streamEvents[0]->eventName()->toString());
+        $this->assertEquals($testStream->streamEvents()[0]->uuid()->toString(), $streamEvents[0]->uuid()->toString());
+        $this->assertEquals($testStream->streamEvents()[0]->createdAt()->format('Y-m-d\TH:i:s.uO'), $streamEvents[0]->createdAt()->format('Y-m-d\TH:i:s.uO'));
+        $this->assertEquals('Prooph\EventStoreTest\Mock\UserCreated', $streamEvents[0]->messageName());
         $this->assertEquals('contact@prooph.de', $streamEvents[0]->payload()['email']);
         $this->assertEquals(1, $streamEvents[0]->version());
     }
@@ -74,14 +74,12 @@ class Zf2EventStoreAdapterTest extends TestCase
     {
         $this->adapter->create($this->getTestStream());
 
-        $streamEvent = new StreamEvent(
-            EventId::generate(),
-            new EventName('UsernameChanged'),
+        $streamEvent = UsernameChanged::with(
             array('name' => 'John Doe'),
-            1,
-            new \DateTime(),
-            array('tag' => 'person')
+            2
         );
+
+        DomainEventMetadataWriter::setMetadataKey($streamEvent, 'tag', 'person');
 
         $this->adapter->appendTo(new StreamName('Prooph\Model\User'), array($streamEvent));
 
@@ -98,23 +96,19 @@ class Zf2EventStoreAdapterTest extends TestCase
     {
         $this->adapter->create($this->getTestStream());
 
-        $streamEvent1 = new StreamEvent(
-            EventId::generate(),
-            new EventName('UsernameChanged'),
+        $streamEvent1 = UsernameChanged::with(
             array('name' => 'John Doe'),
-            2,
-            new \DateTime(),
-            array('tag' => 'person')
+            2
         );
 
-        $streamEvent2 = new StreamEvent(
-            EventId::generate(),
-            new EventName('EmailChanged'),
-            array('email' => 'test@prooph.de'),
-            3,
-            new \DateTime(),
-            array('tag' => 'person')
+        DomainEventMetadataWriter::setMetadataKey($streamEvent1, 'tag', 'person');
+
+        $streamEvent2 = UsernameChanged::with(
+            array('name' => 'Jane Doe'),
+            2
         );
+
+        DomainEventMetadataWriter::setMetadataKey($streamEvent2, 'tag', 'person');
 
         $this->adapter->appendTo(new StreamName('Prooph\Model\User'), array($streamEvent1, $streamEvent2));
 
@@ -122,8 +116,8 @@ class Zf2EventStoreAdapterTest extends TestCase
 
         $this->assertEquals('Prooph\Model\User', $stream->streamName()->toString());
         $this->assertEquals(2, count($stream->streamEvents()));
-        $this->assertEquals('UsernameChanged', $stream->streamEvents()[0]->eventName());
-        $this->assertEquals('EmailChanged', $stream->streamEvents()[1]->eventName());
+        $this->assertEquals('John Doe', $stream->streamEvents()[0]->payload()['name']);
+        $this->assertEquals('Jane Doe', $stream->streamEvents()[1]->payload()['name']);
     }
 
     /**
@@ -131,14 +125,12 @@ class Zf2EventStoreAdapterTest extends TestCase
      */
     private function getTestStream()
     {
-        $streamEvent = new StreamEvent(
-            EventId::generate(),
-            new EventName('UserCreated'),
-            array('name' => 'Alex', 'email' => 'contact@prooph.de'),
-            1,
-            new \DateTime(),
-            array('tag' => 'person')
+        $streamEvent = UserCreated::with(
+            array('name' => 'Max Mustermann', 'email' => 'contact@prooph.de'),
+            1
         );
+
+        DomainEventMetadataWriter::setMetadataKey($streamEvent, 'tag', 'person');
 
         return new Stream(new StreamName('Prooph\Model\User'), array($streamEvent));
     }

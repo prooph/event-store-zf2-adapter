@@ -10,21 +10,17 @@
 
 namespace Prooph\EventStore\Adapter\Zf2;
 
-use Prooph\EventStore\Adapter\AdapterInterface;
+use Prooph\Common\Messaging\DomainEvent;
 use Prooph\EventStore\Adapter\Exception\ConfigurationException;
-use Prooph\EventStore\Adapter\Feature\TransactionFeatureInterface;
+use Prooph\EventStore\Adapter\Feature\CanHandleTransaction;
 use Prooph\EventStore\Exception\RuntimeException;
-use Prooph\EventStore\Stream\EventId;
-use Prooph\EventStore\Stream\EventName;
 use Prooph\EventStore\Stream\Stream;
-use Prooph\EventStore\Stream\StreamEvent;
 use Prooph\EventStore\Stream\StreamName;
 use Zend\Db\Adapter\Adapter as ZendDbAdapter;
 use Zend\Db\Sql\Ddl\Column\Integer;
 use Zend\Db\Sql\Ddl\Column\Text;
 use Zend\Db\Sql\Ddl\Column\Varchar;
 use Zend\Db\Sql\Ddl\Constraint\PrimaryKey;
-use Zend\Db\Sql\Ddl\Constraint\UniqueKey;
 use Zend\Db\Sql\Ddl\CreateTable;
 use Zend\Db\Sql\Ddl\DropTable;
 use Zend\Db\TableGateway\TableGateway;
@@ -36,7 +32,7 @@ use Zend\Serializer\Serializer;
  * 
  * @author Alexander Miertsch <contact@prooph.de>
  */
-class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterface
+class Zf2EventStoreAdapter implements \Prooph\EventStore\Adapter\Adapter, CanHandleTransaction
 {
 
     /**
@@ -67,7 +63,7 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     /**
      * @var array
      */
-    protected $standardColumns = ['eventId', 'eventName', 'occurredOn', 'payload', 'version'];
+    protected $standardColumns = ['event_id', 'event_name', 'event_class', 'created_at', 'payload', 'version'];
 
     /**
      * @param array $configuration
@@ -93,63 +89,63 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     }
 
     /**
-     * @param Stream $aStream
+     * @param Stream $stream
      * @throws \Prooph\EventStore\Exception\RuntimeException
      * @return void
      */
-    public function create(Stream $aStream)
+    public function create(Stream $stream)
     {
-        if (count($aStream->streamEvents()) === 0) {
+        if (count($stream->streamEvents()) === 0) {
             throw new RuntimeException(
                 sprintf(
                     "Cannot create empty stream %s. %s requires at least one event to extract metadata information",
-                    $aStream->streamName()->toString(),
+                    $stream->streamName()->toString(),
                     __CLASS__
                 )
             );
         }
 
-        $firstEvent = $aStream->streamEvents()[0];
+        $firstEvent = $stream->streamEvents()[0];
 
-        $this->createSchemaFor($aStream->streamName(), $firstEvent->metadata());
+        $this->createSchemaFor($stream->streamName(), $firstEvent->metadata());
 
-        $this->appendTo($aStream->streamName(), $aStream->streamEvents());
+        $this->appendTo($stream->streamName(), $stream->streamEvents());
     }
 
     /**
-     * @param StreamName $aStreamName
+     * @param StreamName $streamName
      * @param array $streamEvents
      * @throws \Prooph\EventStore\Exception\StreamNotFoundException If stream does not exist
      * @return void
      */
-    public function appendTo(StreamName $aStreamName, array $streamEvents)
+    public function appendTo(StreamName $streamName, array $streamEvents)
     {
         foreach ($streamEvents as $event) {
-            $this->insertEvent($aStreamName, $event);
+            $this->insertEvent($streamName, $event);
         }
     }
 
     /**
-     * @param StreamName $aStreamName
+     * @param StreamName $streamName
      * @param null|int $minVersion
      * @return Stream|null
      */
-    public function load(StreamName $aStreamName, $minVersion = null)
+    public function load(StreamName $streamName, $minVersion = null)
     {
-        $events = $this->loadEventsByMetadataFrom($aStreamName, array(), $minVersion);
+        $events = $this->loadEventsByMetadataFrom($streamName, array(), $minVersion);
 
-        return new Stream($aStreamName, $events);
+        return new Stream($streamName, $events);
     }
 
     /**
-     * @param StreamName $aStreamName
+     * @param StreamName $streamName
      * @param array $metadata
      * @param null|int $minVersion
-     * @return StreamEvent[]
+     * @return DomainEvent[]
      */
-    public function loadEventsByMetadataFrom(StreamName $aStreamName, array $metadata, $minVersion = null)
+    public function loadEventsByMetadataFrom(StreamName $streamName, array $metadata, $minVersion = null)
     {
-        $tableGateway = $this->getTablegateway($aStreamName);
+        $tableGateway = $this->getTablegateway($streamName);
 
         $sql = $tableGateway->getSql();
 
@@ -177,11 +173,7 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
         foreach ($eventsData as $eventData) {
             $payload = Serializer::unserialize($eventData->payload, $this->serializerAdapter);
 
-            $eventId = new EventId($eventData->eventId);
-
-            $eventName = new EventName($eventData->eventName);
-
-            $occurredOn = new \DateTime($eventData->occurredOn);
+            $eventClass = $eventData['event_class'];
 
             //Add metadata stored in table
             foreach ($eventData as $key => $value) {
@@ -190,7 +182,16 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
                 }
             }
 
-            $events[] = new StreamEvent($eventId, $eventName, $payload, (int)$eventData->version, $occurredOn, $metadata);
+            $events[] = $eventClass::fromArray(
+                [
+                    'uuid' => $eventData['event_id'],
+                    'name' => $eventData['event_name'],
+                    'version' => (int)$eventData['version'],
+                    'created_at' => $eventData['created_at'],
+                    'payload' => $payload,
+                    'metadata' => $metadata
+                ]
+            );
         }
 
         return $events;
@@ -212,26 +213,27 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
     }
 
     /**
-     * @param StreamName $aStreamName
+     * @param StreamName $streamName
      * @param array $metadata
      * @param bool $returnSql
      * @return string|null Whether $returnSql is true or not function will return generated sql or execute it directly
      */
-    public function createSchemaFor(StreamName $aStreamName, array $metadata = array(), $returnSql = false)
+    public function createSchemaFor(StreamName $streamName, array $metadata = array(), $returnSql = false)
     {
-        $createTable = new CreateTable($this->getTable($aStreamName));
+        $createTable = new CreateTable($this->getTable($streamName));
 
-        $createTable->addColumn(new Varchar('eventId', 200))
+        $createTable->addColumn(new Varchar('event_id', 100))
             ->addColumn(new Integer('version'))
-            ->addColumn(new Text('eventName'))
+            ->addColumn(new Varchar('event_name', 100))
+            ->addColumn(new Varchar('event_class', 100))
             ->addColumn(new Text('payload'))
-            ->addColumn(new Text('occurredOn'));
+            ->addColumn(new Varchar('created_at', 50));
 
         foreach ($metadata as $key => $value) {
             $createTable->addColumn(new Varchar($key, 100));
         }
 
-        $createTable->addConstraint(new PrimaryKey('eventId'));
+        $createTable->addConstraint(new PrimaryKey('event_id'));
 
         if ($returnSql) {
             return $createTable->getSqlString($this->dbAdapter->getPlatform());
@@ -247,13 +249,13 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
      *
      * Use this function with caution. All your events will be lost! But it can be useful in migration scenarios.
      *
-     * @param StreamName $aStreamName
+     * @param StreamName $streamName
      * @param bool $returnSql
      * @return string|null Whether $returnSql is true or not function will return generated sql or execute it directly
      */
-    public function dropSchemaFor(StreamName $aStreamName, $returnSql = false)
+    public function dropSchemaFor(StreamName $streamName, $returnSql = false)
     {
-        $dropTable = new DropTable($this->getTable($aStreamName));
+        $dropTable = new DropTable($this->getTable($streamName));
 
         if ($returnSql) {
             return $dropTable->getSqlString($this->dbAdapter->getPlatform());
@@ -268,17 +270,18 @@ class Zf2EventStoreAdapter implements AdapterInterface, TransactionFeatureInterf
      * Insert an event
      *
      * @param StreamName $streamName
-     * @param StreamEvent $e
+     * @param DomainEvent $e
      * @return void
      */
-    protected function insertEvent(StreamName $streamName, StreamEvent $e)
+    protected function insertEvent(StreamName $streamName, DomainEvent $e)
     {
         $eventData = array(
-            'eventId' => $e->eventId()->toString(),
+            'event_id' => $e->uuid()->toString(),
             'version' => $e->version(),
-            'eventName' => $e->eventName()->toString(),
+            'event_name' => $e->messageName(),
+            'event_class' => get_class($e),
             'payload' => Serializer::serialize($e->payload(), $this->serializerAdapter),
-            'occurredOn' => $e->occurredOn()->format('Y-m-d\TH:i:s.uO')
+            'created_at' => $e->createdAt()->format(\DateTime::ISO8601)
         );
 
         foreach ($e->metadata() as $key => $value) {
