@@ -1,6 +1,8 @@
 event-store-zf2-adapter
 =======================
 
+*This package is abandoned and no longer maintained. we suggest using the [prooph/event-store-doctrine-adapter](https://github.com/prooph/event-store-doctrine-adapter) instead.*
+
 [![Build Status](https://travis-ci.org/prooph/event-store-zf2-adapter.svg?branch=master)](https://travis-ci.org/prooph/event-store-zf2-adapter)
 [![Coverage Status](https://coveralls.io/repos/prooph/event-store-zf2-adapter/badge.png)](https://coveralls.io/r/prooph/event-store-zf2-adapter)
 
